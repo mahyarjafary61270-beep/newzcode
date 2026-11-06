@@ -1,0 +1,20 @@
+# secrets — هرگز کامیت نشن!
+.env
+.env.local
+.env.*.local
+
+# deps & build
+node_modules/
+dist/
+
+# prisma generated
+src/generated/
+
+# misc
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.pem

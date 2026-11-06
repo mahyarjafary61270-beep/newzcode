@@ -1,0 +1,44 @@
+// مهیار گپ — اسکیمای دیتابیس
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  displayName  String
+  passwordHash String
+  color        String    @default("#8b5cf6")
+  createdAt    DateTime  @default(now())
+  lastSeen     DateTime  @default(now())
+  messages     Message[]
+}
+
+model Channel {
+  id        String    @id @default(cuid())
+  name      String
+  type      String // TEXT | VOICE
+  position  Int       @default(0)
+  createdAt DateTime  @default(now())
+  messages  Message[]
+
+  @@index([type, position])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  channelId String
+  userId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+}

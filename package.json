@@ -1,0 +1,51 @@
+{
+  "name": "mahyar-gap",
+  "version": "1.0.0",
+  "private": true,
+  "description": "مهیار گپ — چت و ویس اختصاصی برای رفیق‌ها",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch src/server/index.js",
+    "dev:client": "vite",
+    "build": "vite build",
+    "start": "prisma migrate deploy && node src/server/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@fontsource-variable/vazirmatn": "^5.1.0",
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "livekit-client": "^2.11.0",
+    "livekit-server-sdk": "^2.10.2",
+    "lucide-react": "^0.469.0",
+    "prisma": "^5.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "vite": "^5.4.11"
+  },
+  "allowScripts": {
+    "@prisma/engines@5.22.0": true,
+    "esbuild@0.21.5": true,
+    "prisma@5.22.0": true
+  }
+}
