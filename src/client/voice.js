@@ -86,6 +86,7 @@ class VoiceClient {
     } catch {
       /* بی‌خیال */
     }
+    this.removeUnlockListener();
     this.leaving = false;
     if (!silent) getSocket()?.emit('voice:leave');
     getStore().setVoiceState({ status: 'off', channelId: null, participants: [], screens: [] });
@@ -98,17 +99,23 @@ class VoiceClient {
     } catch {
       /* بی‌خیال */
     }
+    this.removeUnlockListener();
     this.room = null;
     this.channelId = null;
   }
 
   wire(room) {
     room.on(RoomEvent.ParticipantsChanged, () => this.refreshParticipants());
-    room.on(RoomEvent.TrackSubscribed, () => {
+    room.on(RoomEvent.TrackSubscribed, (track) => {
+      // ⚠ مهم: صدای ریموت باید صریحاً به یک المنت وصل شود وگرنه هیچ‌وقت پخش نمی‌شود
+      if (track.kind === Track.Kind.Audio) this.attachAudio(track);
       this.refreshParticipants();
       this.applyVolumes();
     });
-    room.on(RoomEvent.TrackUnsubscribed, () => this.refreshParticipants());
+    room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      if (track.kind === Track.Kind.Audio) this.detachAudio(track);
+      this.refreshParticipants();
+    });
     room.on(RoomEvent.TrackPublished, () => this.refreshParticipants());
     room.on(RoomEvent.TrackUnpublished, () => this.refreshParticipants());
     room.on(RoomEvent.TrackMuted, () => this.refreshParticipants());
@@ -126,6 +133,12 @@ class VoiceClient {
     room.on(RoomEvent.Reconnecting, () => getStore().setVoiceState({ status: 'connecting' }));
     room.on(RoomEvent.Reconnected, () => {
       getStore().setVoiceState({ status: 'connected' });
+      // بعد از ریکانکت، ترک‌های صوتی ممکن است لازم باشد دوباره وصل شوند
+      for (const p of room.remoteParticipants.values()) {
+        for (const pub of p.audioTrackPublications || []) {
+          if (pub.track && pub.track.kind === Track.Kind.Audio) this.attachAudio(pub.track);
+        }
+      }
       this.refreshParticipants();
       this.applyVolumes();
     });
@@ -137,6 +150,12 @@ class VoiceClient {
       this.syncRadio();
       getStore().toast('ارتباط ویس قطع شد', 'error');
     });
+
+    // اگر مرورگر پخش خودکار را بلاک کرده باشد، اولین کلیک بعدی صدا را آزاد می‌کند
+    this._unlockAudio = () => {
+      if (room.isAudioPlaybackEnabled !== true) room.startAudio().catch(() => {});
+    };
+    document.addEventListener('click', this._unlockAudio);
   }
 
   refreshParticipants(speakingIds) {
@@ -185,6 +204,53 @@ class VoiceClient {
     collect(room.localParticipant);
     for (const p of room.remoteParticipants.values()) collect(p);
     getStore().setScreens(screens);
+  }
+
+  // ══════════ پخش صدای ریموت ══════════
+  // livekit با webAudioMix=false صدا را فقط از طریق المنت‌های attach‌شده پخش می‌کند
+  ensureAudioMount() {
+    let mount = document.getElementById('mg-remote-audio');
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.id = 'mg-remote-audio';
+      mount.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none';
+      document.body.appendChild(mount);
+    }
+    return mount;
+  }
+
+  attachAudio(track) {
+    try {
+      if (track.attachedElements && track.attachedElements.length > 0) return; // قبلاً وصل شده
+      const el = track.attach();
+      el.autoplay = true;
+      el.muted = false;
+      this.ensureAudioMount().appendChild(el);
+      el.play().catch(() => {
+        // پخش خودکار بلاک شده — با اولین کلیک کاربر startAudio آزادش می‌کند
+        this.room?.startAudio?.().catch(() => {});
+      });
+    } catch {
+      /* بی‌خیال */
+    }
+  }
+
+  detachAudio(track) {
+    try {
+      for (const el of [...(track.attachedElements || [])]) {
+        track.detach(el);
+        el.remove();
+      }
+    } catch {
+      /* بی‌خیال */
+    }
+  }
+
+  removeUnlockListener() {
+    if (this._unlockAudio) {
+      document.removeEventListener('click', this._unlockAudio);
+      this._unlockAudio = null;
+    }
   }
 
   // ══════════ میکروفون / هدست / اسکرین ══════════

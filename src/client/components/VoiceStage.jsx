@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MonitorUp, Radio, PhoneOff, MicOff, Square, Play, Signal } from 'lucide-react';
+import { MonitorUp, Radio, PhoneOff, MicOff, Square, Play, Signal, Maximize2, Minimize2 } from 'lucide-react';
 import { useStore, getStore } from '../store.js';
 import { voiceClient } from '../voice.js';
 import { Avatar, Equalizer } from './bits.jsx';
@@ -137,13 +137,50 @@ function ScreensArea() {
   const screens = useStore((s) => s.voice.screens);
   const users = useStore((s) => s.users);
   const [idx, setIdx] = useState(0);
+  const [isFull, setIsFull] = useState(false);
+  const wrapRef = useRef(null);
   const active = screens[Math.min(idx, screens.length - 1)];
+
+  useEffect(() => {
+    const onChange = () => setIsFull(!!(document.fullscreenElement || document.webkitFullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
+  }, []);
+
   if (!active) return null;
   const owner = users.find((u) => u.id === active.identity);
 
+  const toggleFullscreen = () => {
+    const el = wrapRef.current;
+    if (!el) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+      return;
+    }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) {
+      try {
+        Promise.resolve(req.call(el)).catch(() => {});
+      } catch {
+        /* بی‌خیال */
+      }
+    }
+  };
+
   return (
-    <div className="screens-area">
-      <ScreenVideo track={active.track} />
+    <div ref={wrapRef} className="screens-area">
+      <ScreenVideo track={active.track} onDoubleClick={toggleFullscreen} />
+      <button
+        className="screens-fs icon-btn"
+        onClick={toggleFullscreen}
+        title={isFull ? 'خروج از تمام‌صفحه' : 'نمایش تمام‌صفحه (یا دوبار کلیک روی ویدیو)'}
+      >
+        {isFull ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+      </button>
       {screens.length > 1 && (
         <div className="screens-tabs">
           {screens.map((s, i) => {
@@ -161,7 +198,7 @@ function ScreensArea() {
   );
 }
 
-function ScreenVideo({ track }) {
+function ScreenVideo({ track, onDoubleClick }) {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
@@ -175,7 +212,7 @@ function ScreenVideo({ track }) {
       }
     };
   }, [track]);
-  return <video ref={ref} className="screen-video" autoPlay playsInline />;
+  return <video ref={ref} className="screen-video" autoPlay playsInline onDoubleClick={onDoubleClick} />;
 }
 
 // ── کارت رادیو داخل ویس ──
