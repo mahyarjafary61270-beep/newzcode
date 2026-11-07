@@ -2,6 +2,7 @@ import { Room, RoomEvent, Track, ConnectionState } from 'livekit-client';
 import { api } from './api.js';
 import { getSocket } from './socket.js';
 import { getStore } from './store.js';
+import { requestNotifyPermission } from './alerts.js';
 
 // ── کنترلر ویس + پلیر رادیو (سینگلتون سراسری) ──
 class VoiceClient {
@@ -21,6 +22,7 @@ class VoiceClient {
   // ══════════ اتصال ویس ══════════
   async join(channel, { muted = false } = {}) {
     if (this.room) await this.leave(true);
+    requestNotifyPermission(); // بهترین لحظه برای گرفتن اجازه‌ی نوتیف — کلیک کاربر
     const s = getStore();
     s.setVoiceState({ status: 'connecting', channelId: channel.id, micMuted: muted });
 
@@ -62,6 +64,7 @@ class VoiceClient {
       this.refreshParticipants();
       this.applyVolumes();
       this.syncRadio();
+      this.requestWakeLock(); // 📱 گوشی موقع ویس نخوابه
     } catch (err) {
       console.error('[voice] join failed:', err);
       this.cleanupRoom();
@@ -89,6 +92,7 @@ class VoiceClient {
     }
     this.removeUnlockListener();
     this.leaving = false;
+    this.releaseWakeLock();
     if (!silent) getSocket()?.emit('voice:leave');
     getStore().setVoiceState({ status: 'off', channelId: null, participants: [], screens: [] });
     this.syncRadio();
@@ -157,6 +161,12 @@ class VoiceClient {
       if (room.isAudioPlaybackEnabled !== true) room.startAudio().catch(() => {});
     };
     document.addEventListener('click', this._unlockAudio);
+
+    // برگشت به تب → wake lock دوباره گرفته شود
+    this._visHandler = () => {
+      if (document.visibilityState === 'visible' && this.room) this.requestWakeLock();
+    };
+    document.addEventListener('visibilitychange', this._visHandler);
   }
 
   refreshParticipants(speakingIds) {
@@ -252,6 +262,33 @@ class VoiceClient {
       document.removeEventListener('click', this._unlockAudio);
       this._unlockAudio = null;
     }
+    if (this._visHandler) {
+      document.removeEventListener('visibilitychange', this._visHandler);
+      this._visHandler = null;
+    }
+  }
+
+  // 📱 Wake Lock — صفحه‌ی موبایل هنگام ویس خاموش نشود
+  async requestWakeLock() {
+    try {
+      if (navigator.wakeLock && !this._wakeLock) {
+        this._wakeLock = await navigator.wakeLock.request('screen');
+        this._wakeLock.addEventListener('release', () => {
+          this._wakeLock = null;
+        });
+      }
+    } catch {
+      /* مرورگر اجازه نداد — مهم نیست */
+    }
+  }
+
+  releaseWakeLock() {
+    try {
+      this._wakeLock?.release();
+    } catch {
+      /* بی‌خیال */
+    }
+    this._wakeLock = null;
   }
 
   // ══════════ میکروفون / هدست / اسکرین ══════════

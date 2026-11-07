@@ -89,7 +89,7 @@ export function Toasts() {
   return (
     <div className="toasts">
       {toasts.map((t) => (
-        <div key={t.id} className={`toast glass ${t.kind === 'error' ? 'toast-error' : ''}`}>
+        <div key={t.id} className={`toast glass toast-${t.kind || 'info'}`}>
           {t.text}
         </div>
       ))}

@@ -470,12 +470,69 @@ a:hover {
 
 /* ═══════════ چیدمان اصلی ═══════════ */
 .app {
+  position: relative;
   display: flex;
   height: 100%;
   background:
     radial-gradient(900px 500px at 88% -10%, rgba(124, 58, 237, 0.09), transparent 60%),
     radial-gradient(800px 500px at 8% 110%, rgba(13, 148, 136, 0.08), transparent 60%),
     var(--bg);
+  overflow: hidden;
+}
+
+/* ── شفق پشت شیشه‌ها ── */
+.bg-blobs {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  filter: blur(90px);
+  opacity: 0.42;
+}
+.bb {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+.bb-a {
+  width: 480px;
+  height: 480px;
+  background: #7c3aed;
+  top: -150px;
+  inset-inline-start: -110px;
+  animation: drift 26s ease-in-out infinite alternate;
+}
+.bb-b {
+  width: 430px;
+  height: 430px;
+  background: #0d9488;
+  bottom: -170px;
+  inset-inline-end: -130px;
+  animation: drift 33s ease-in-out infinite alternate-reverse;
+}
+.bb-c {
+  width: 320px;
+  height: 320px;
+  background: #db2777;
+  top: 42%;
+  inset-inline-start: 52%;
+  opacity: 0.55;
+  animation: drift 39s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(-70px, 50px) scale(1.2);
+  }
+}
+
+.sidebar,
+.main {
+  position: relative;
+  z-index: 1;
 }
 
 .main {
@@ -774,17 +831,158 @@ a:hover {
   word-break: break-word;
   white-space: pre-wrap;
 }
-.msg-del {
+.msg-tools {
   position: absolute;
-  top: 4px;
-  left: 8px;
-  width: 28px;
-  height: 28px;
-  opacity: 0;
-  background: rgba(0, 0, 0, 0.4);
+  top: -14px;
+  inset-inline-end: 10px;
+  z-index: 20;
+  display: flex;
+  gap: 1px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(15, 18, 27, 0.95);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.7);
+  animation: pop-in 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.3);
 }
-.msg:hover .msg-del {
-  opacity: 1;
+.msg-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  color: var(--text-dim);
+  transition: all 0.13s;
+}
+.msg-tools button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* پیش‌نمایش ریپلای روی پیام */
+.msg-reply {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-bottom: 4px;
+  padding: 2px 8px 2px 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: right;
+  border-inline-start: 2px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+.msg-reply b {
+  font-weight: 700;
+  flex: none;
+}
+.msg-reply span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msg-reply:hover {
+  color: var(--text);
+  border-inline-start-color: var(--accent-2);
+}
+
+/* هایلایت موقع پرش به پیام اصلی */
+.msg.flash {
+  animation: msg-flash 1.5s ease;
+}
+@keyframes msg-flash {
+  0%,
+  55% {
+    background: rgba(139, 92, 246, 0.18);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.edited-tag {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-inline-start: 7px;
+}
+
+/* ویرایش پیام */
+.msg-edit textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(139, 92, 246, 0.55);
+  border-radius: 10px;
+  padding: 8px 11px;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  color: var(--text);
+}
+.msg-edit-hint {
+  font-size: 10.5px;
+  margin-top: 3px;
+}
+
+/* ری‌اکشن‌ها */
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.react-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 13.5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  transition: all 0.14s;
+}
+.react-chip:hover {
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+.react-chip.mine {
+  background: rgba(139, 92, 246, 0.22);
+  border-color: rgba(139, 92, 246, 0.55);
+}
+.react-chip span {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+/* پیکر ایموجی */
+.emoji-pop {
+  position: absolute;
+  top: 16px;
+  inset-inline-end: 8px;
+  z-index: 45;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 8px;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px -10px rgba(0, 0, 0, 0.8);
+  animation: vol-pop-in 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.emoji-pop button {
+  font-size: 18px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: transform 0.12s, background 0.12s;
+}
+.emoji-pop button:hover {
+  background: var(--panel-2);
+  transform: scale(1.3);
 }
 
 /* ── ورودی چت ── */
@@ -1189,6 +1387,14 @@ a:hover {
 .dock-btn.danger:hover {
   background: rgba(244, 63, 94, 0.24);
 }
+.dock-btn.ping {
+  color: #5eead4;
+  background: rgba(45, 212, 191, 0.1);
+}
+.dock-btn.ping:hover {
+  background: rgba(45, 212, 191, 0.2);
+  animation: pulse-soft 0.9s ease-in-out infinite;
+}
 
 /* ── اسکرین‌شیر ── */
 .screens-area {
@@ -1445,10 +1651,44 @@ a:hover {
   max-width: min(420px, 90vw);
   text-align: center;
 }
+.toast-info {
+  border-color: var(--border);
+}
 .toast-error {
   border-color: rgba(244, 63, 94, 0.4);
   background: linear-gradient(160deg, rgba(244, 63, 94, 0.2), rgba(244, 63, 94, 0.08));
   color: #fecdd3;
+}
+.toast-ping {
+  border-color: rgba(45, 212, 191, 0.55);
+  background: linear-gradient(160deg, rgba(45, 212, 191, 0.24), rgba(139, 92, 246, 0.14));
+  color: #99f6e4;
+  font-weight: 700;
+  animation: rise 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), pulse-soft 1.1s ease-in-out 0.3s 2;
+}
+
+/* چیپ پاسخ بالای ورودی */
+.reply-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  animation: rise 0.18s ease;
+}
+.reply-chip > span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reply-chip .icon-btn {
+  width: 24px;
+  height: 24px;
+  flex: none;
 }
 
 /* ═══════════ ریسپانسیو ═══════════ */
@@ -1503,7 +1743,7 @@ a:hover {
   .station {
     grid-column: 1 / -1;
   }
-  .msg-del {
+  .msg-tools {
     opacity: 1;
   }
   .chat-head {

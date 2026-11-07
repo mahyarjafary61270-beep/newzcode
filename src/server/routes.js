@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { AccessToken } from 'livekit-server-sdk';
-import { prisma, userPublic, pubUser } from './db.js';
+import { prisma, userPublic, pubUser, serializeMessage } from './db.js';
 import { config, STATIONS } from './config.js';
 import { authRequired } from './auth.js';
 import { onlineIds, voiceSnapshot, radioSnapshot } from './realtime.js';
@@ -45,10 +45,14 @@ apiRouter.get('/channels/:id/messages', async (req, res) => {
       where: { channelId: id, ...(before && !isNaN(before) ? { createdAt: { lt: before } } : {}) },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      include: { user: { select: userPublic } }
+      include: {
+        user: { select: userPublic },
+        replyTo: { include: { user: { select: userPublic } } },
+        reactions: { select: { emoji: true, userId: true } }
+      }
     });
     return res.json({
-      messages: messages.reverse().map((m) => ({ id: m.id, channelId: m.channelId, content: m.content, createdAt: m.createdAt, user: pubUser(m.user) })),
+      messages: messages.reverse().map(serializeMessage),
       hasMore: messages.length === limit
     });
   } catch (err) {

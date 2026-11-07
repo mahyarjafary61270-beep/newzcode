@@ -97,6 +97,22 @@ export const useStore = create((set) => ({
       messages: { ...s.messages, [channelId]: (s.messages[channelId] || []).filter((m) => m.id !== messageId) }
     })),
 
+  editMessage: (channelId, messageId, patch) =>
+    set((s) => ({
+      messages: {
+        ...s.messages,
+        [channelId]: (s.messages[channelId] || []).map((m) => (m.id === messageId ? { ...m, ...patch } : m))
+      }
+    })),
+
+  setMessageReactions: (channelId, messageId, reactions) =>
+    set((s) => ({
+      messages: {
+        ...s.messages,
+        [channelId]: (s.messages[channelId] || []).map((m) => (m.id === messageId ? { ...m, reactions } : m))
+      }
+    })),
+
   bumpUnread: (channelId) =>
     set((s) => (s.activeChannelId === channelId ? {} : { unread: { ...s.unread, [channelId]: (s.unread[channelId] || 0) + 1 } })),
 

@@ -43,6 +43,12 @@ export default function Shell() {
 
   return (
     <div className="app">
+      {/* شفق پشت شیشه‌ها */}
+      <div className="bg-blobs" aria-hidden>
+        <div className="bb bb-a" />
+        <div className="bb bb-b" />
+        <div className="bb bb-c" />
+      </div>
       <button className="mobile-menu glass" title="منو" onClick={() => getStore().setSidebarOpen(!getStore().sidebarOpen)}>
         ☰
       </button>

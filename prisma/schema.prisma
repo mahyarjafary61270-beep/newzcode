@@ -10,14 +10,15 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
+  id           String            @id @default(cuid())
+  username     String            @unique
   displayName  String
   passwordHash String
-  color        String    @default("#8b5cf6")
-  createdAt    DateTime  @default(now())
-  lastSeen     DateTime  @default(now())
+  color        String            @default("#8b5cf6")
+  createdAt    DateTime          @default(now())
+  lastSeen     DateTime          @default(now())
   messages     Message[]
+  reactions    MessageReaction[]
 }
 
 model Channel {
@@ -32,13 +33,32 @@ model Channel {
 }
 
 model Message {
-  id        String   @id @default(cuid())
+  id        String            @id @default(cuid())
   channelId String
   userId    String
-  content   String   @db.Text
-  createdAt DateTime @default(now())
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String            @db.Text
+  createdAt DateTime          @default(now())
+  replyToId String?
+  editedAt  DateTime?
+  channel   Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replyTo   Message?          @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[]         @relation("MessageReplies")
+  reactions MessageReaction[]
 
   @@index([channelId, createdAt])
+  @@index([replyToId])
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
 }

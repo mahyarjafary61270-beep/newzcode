@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Trash2 } from 'lucide-react';
+import { Send, Trash2, Reply, SmilePlus, Pencil, X } from 'lucide-react';
 import { useStore, getStore } from '../store.js';
 import { api } from '../api.js';
 import { getSocket } from '../socket.js';
@@ -8,6 +8,13 @@ import { Avatar } from './bits.jsx';
 
 const timeFmt = new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit' });
 const dayFmt = new Intl.DateTimeFormat('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' });
+const faNum = (n) => Number(n).toLocaleString('fa-IR');
+
+// دستگاه‌های لمسی hover ندارند — نوار ابزار پیام همیشه باید دیده شود
+const IS_TOUCH = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)')?.matches;
+
+// ایموجی‌های سریع برای واکنش
+const EMOJIS = ['👍', '😂', '🤣', '❤️', '🔥', '😍', '😮', '😢', '😭', '🙏', '👏', '💯', '🎉', '🎮', '🍕', '💀', '🤔', '✌️', '😴', '👀'];
 
 function dayLabel(d) {
   const today = new Date();
@@ -37,6 +44,14 @@ function linkify(text) {
   return parts;
 }
 
+const scrollToMessage = (id) => {
+  const el = document.getElementById(`msg-${id}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1500);
+};
+
 export default function Chat({ channel }) {
   const messages = useStore((s) => s.messages[channel.id]);
   const hasMore = useStore((s) => s.hasMore[channel.id]);
@@ -47,9 +62,13 @@ export default function Chat({ channel }) {
   const stations = useStore((s) => s.stations);
   const voiceStatus = useStore((s) => s.voice.status);
   const [text, setText] = useState('');
+  const [replyTo, setReplyTo] = useState(null); // { id, displayName, color, content }
+  const [reactFor, setReactFor] = useState(null); // messageId پیکر ایموجی باز
+  const [editing, setEditing] = useState(null); // { id, content }
   const listRef = useRef(null);
   const stickBottom = useRef(true);
   const typingAt = useRef(0);
+  const inputRef = useRef(null);
 
   // عضویت اتاق سوکت + لود پیام‌ها
   useEffect(() => {
@@ -74,6 +93,16 @@ export default function Chat({ channel }) {
     const t = setInterval(() => getStore().pruneTyping(), 3000);
     return () => clearInterval(t);
   }, []);
+
+  // بستن پیکر ایموجی با کلیک بیرون
+  useEffect(() => {
+    if (!reactFor) return undefined;
+    const close = (e) => {
+      if (!e.target.closest?.('.emoji-pop') && !e.target.closest?.('.msg-tools')) setReactFor(null);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [reactFor]);
 
   const onScroll = () => {
     const el = listRef.current;
@@ -133,11 +162,16 @@ export default function Chat({ channel }) {
       setText('');
       return;
     }
-    getSocket()?.emit('message:send', { channelId: channel.id, content: value }, (res) => {
-      if (res && !res.ok) getStore().toast(res.error || 'پیام ارسال نشد', 'error');
-    });
+    getSocket()?.emit(
+      'message:send',
+      { channelId: channel.id, content: value, replyToId: replyTo?.id || undefined },
+      (res) => {
+        if (res && !res.ok) getStore().toast(res.error || 'پیام ارسال نشد', 'error');
+      }
+    );
     getSocket()?.emit('typing', { channelId: channel.id, isTyping: false });
     setText('');
+    setReplyTo(null);
   };
 
   const onInput = (e) => {
@@ -147,6 +181,26 @@ export default function Chat({ channel }) {
       typingAt.current = now;
       getSocket()?.emit('typing', { channelId: channel.id, isTyping: true });
     }
+  };
+
+  const startReply = (m) => {
+    setReplyTo({ id: m.id, displayName: m.user.displayName, color: m.user.color, content: m.content.split('\n')[0].slice(0, 80) });
+    inputRef.current?.focus();
+  };
+
+  const startEdit = (m) => setEditing({ id: m.id, content: m.content });
+
+  const saveEdit = () => {
+    if (!editing) return;
+    const value = editing.content.trim();
+    if (value && value !== '') {
+      getSocket()?.emit('message:edit', { messageId: editing.id, content: value });
+    }
+    setEditing(null);
+  };
+
+  const toggleReact = (messageId, emoji, add) => {
+    getSocket()?.emit('message:react', { messageId, emoji, add });
   };
 
   const typingNames = Object.keys(typingMap || {})
@@ -172,9 +226,7 @@ export default function Chat({ channel }) {
       <header className="chat-head">
         <span className="chat-head-icon">#</span>
         <h2>{channel?.name}</h2>
-        <span className="dim chat-head-sub">
-          {(online.length || 0)} نفر آنلاین
-        </span>
+        <span className="dim chat-head-sub">{online.length} نفر آنلاین</span>
       </header>
 
       <div className="msg-list" ref={listRef} onScroll={onScroll}>
@@ -195,12 +247,38 @@ export default function Chat({ channel }) {
               <span>{row.label}</span>
             </div>
           ) : (
-            <MessageRow key={row.key} m={row.m} grouped={row.grouped} mine={row.m.user.id === me?.id} />
+            <MessageRow
+              key={row.key}
+              m={row.m}
+              grouped={row.grouped}
+              mine={row.m.user.id === me?.id}
+              meId={me?.id}
+              onReply={startReply}
+              onEdit={startEdit}
+              onDelete={(id) => getSocket()?.emit('message:delete', { messageId: id })}
+              onToggleReact={toggleReact}
+              reactFor={reactFor}
+              setReactFor={setReactFor}
+              editing={editing}
+              setEditing={setEditing}
+              saveEdit={saveEdit}
+            />
           )
         )}
       </div>
 
       <div className="chat-input-wrap">
+        {replyTo && (
+          <div className="reply-chip glass">
+            <Reply size={13} />
+            <span>
+              در پاسخ به <b style={{ color: replyTo.color }}>{replyTo.displayName}</b> · {replyTo.content}
+            </span>
+            <button className="icon-btn" onClick={() => setReplyTo(null)} title="بی‌خیال پاسخ">
+              <X size={13} />
+            </button>
+          </div>
+        )}
         {(text.startsWith('/mp') || text === '/') && (
           <div className="cmd-hint glass">
             <span className="cmd-title">📻 رادیو:</span>
@@ -219,6 +297,7 @@ export default function Chat({ channel }) {
         )}
         <div className="chat-input">
           <textarea
+            ref={inputRef}
             rows={1}
             value={text}
             onChange={onInput}
@@ -239,16 +318,12 @@ export default function Chat({ channel }) {
   );
 }
 
-function MessageRow({ m, grouped, mine }) {
+function MessageRow({ m, grouped, mine, meId, onReply, onEdit, onDelete, onToggleReact, reactFor, setReactFor, editing, setEditing, saveEdit }) {
   const [hover, setHover] = useState(false);
   const d = new Date(m.createdAt);
 
   return (
-    <div
-      className={`msg ${grouped ? 'grouped' : ''}`}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
+    <div id={`msg-${m.id}`} className={`msg ${grouped ? 'grouped' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div className="msg-avatar">
         {!grouped && <Avatar user={m.user} size={38} />}
       </div>
@@ -261,20 +336,98 @@ function MessageRow({ m, grouped, mine }) {
             <span className="msg-time dim">{timeFmt.format(d)}</span>
           </div>
         )}
-        <div className="msg-content">
-          {m.content.split('\n').map((line, i) => (
-            <div key={i}>{line ? linkify(line) : '\u00A0'}</div>
-          ))}
-        </div>
+
+        {/* پیش‌نمایش ریپلای */}
+        {m.replyTo && (
+          <button className="msg-reply" onClick={() => scrollToMessage(m.replyTo.id)} title="برو به پیام اصلی">
+            <Reply size={11} />
+            <b style={{ color: m.replyTo.user.color }}>{m.replyTo.user.displayName}</b>
+            <span className="dim">{m.replyTo.content}</span>
+          </button>
+        )}
+
+        {editing?.id === m.id ? (
+          <div className="msg-edit">
+            <textarea
+              autoFocus
+              value={editing.content}
+              onChange={(e) => setEditing({ id: m.id, content: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  saveEdit();
+                }
+                if (e.key === 'Escape') setEditing(null);
+              }}
+              rows={Math.min(5, editing.content.split('\n').length + 1)}
+            />
+            <div className="msg-edit-hint dim">Enter ذخیره · Esc لغو</div>
+          </div>
+        ) : (
+          <div className="msg-content">
+            {m.content.split('\n').map((line, i) => (
+              <div key={i}>{line ? linkify(line) : '\u00A0'}</div>
+            ))}
+            {m.editedAt && <span className="edited-tag">(ویرایش‌شده)</span>}
+          </div>
+        )}
+
+        {/* ری‌اکشن‌ها */}
+        {m.reactions?.length > 0 && (
+          <div className="reactions">
+            {m.reactions.map((r) => {
+              const mineR = r.userIds.includes(meId);
+              return (
+                <button
+                  key={r.emoji}
+                  className={`react-chip ${mineR ? 'mine' : ''}`}
+                  onClick={() => onToggleReact(m.id, r.emoji, !mineR)}
+                  title={faNum(r.userIds.length)}
+                >
+                  {r.emoji} <span>{faNum(r.userIds.length)}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
-      {mine && hover && (
-        <button
-          className="icon-btn msg-del"
-          title="حذف پیام"
-          onClick={() => getSocket()?.emit('message:delete', { messageId: m.id })}
-        >
-          <Trash2 size={14} />
-        </button>
+
+      {/* نوار ابزار شناور */}
+      {(hover || IS_TOUCH) && editing?.id !== m.id && (
+        <div className="msg-tools">
+          {reactFor === m.id && (
+            <div className="emoji-pop glass" onClick={(e) => e.stopPropagation()}>
+              {EMOJIS.map((em) => (
+                <button
+                  key={em}
+                  onClick={() => {
+                    const already = m.reactions?.some((r) => r.emoji === em && r.userIds.includes(meId));
+                    onToggleReact(m.id, em, !already);
+                    setReactFor(null);
+                  }}
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+          )}
+          <button title="پاسخ" onClick={() => onReply(m)}>
+            <Reply size={14} />
+          </button>
+          <button title="واکنش" onClick={() => setReactFor(reactFor === m.id ? null : m.id)}>
+            <SmilePlus size={14} />
+          </button>
+          {mine && (
+            <button title="ویرایش" onClick={() => onEdit(m)}>
+              <Pencil size={14} />
+            </button>
+          )}
+          {mine && (
+            <button title="حذف" onClick={() => onDelete(m.id)}>
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

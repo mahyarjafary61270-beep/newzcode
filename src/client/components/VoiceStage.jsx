@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MonitorUp, Radio, PhoneOff, MicOff, Square, Play, Signal, Maximize2, Minimize2 } from 'lucide-react';
+import { MonitorUp, Radio, PhoneOff, MicOff, Square, Play, Signal, Maximize2, Minimize2, BellRing } from 'lucide-react';
 import { useStore, getStore } from '../store.js';
+import { getSocket } from '../socket.js';
 import { voiceClient } from '../voice.js';
 import { Avatar, Equalizer, VolumeSlider } from './bits.jsx';
 
@@ -75,6 +76,19 @@ export default function VoiceStage({ channel }) {
         <button className={`dock-btn ${sharing ? 'on' : ''}`} onClick={() => voiceClient.toggleScreen()}>
           <MonitorUp size={18} />
           <span>{sharing ? 'قطع اشتراک' : 'اشتراک صفحه'}</span>
+        </button>
+        <button
+          className="dock-btn ping"
+          title="به همه بگو بیاد تو ویس"
+          onClick={() => {
+            getSocket()?.emit('voice:ping', { channelId: channel.id }, (res) => {
+              if (res && !res.ok) getStore().toast(res.error || 'پینگ ارسال نشد', 'error');
+              else getStore().toast('پینگ فرستاده شد 📣');
+            });
+          }}
+        >
+          <BellRing size={18} />
+          <span>صدام کن!</span>
         </button>
         <button className={`dock-btn ${radio ? 'on' : ''}`} onClick={() => getStore().setPickerOpen(true)}>
           <Radio size={18} />

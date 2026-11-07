@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { prisma, userPublic, pubUser } from './db.js';
+import { prisma, userPublic, serializeMessage, groupReactions } from './db.js';
 import { config, stationById } from './config.js';
 
 // ── وضعیت در حافظه (برای ۵ نفر کاملاً کافیه و صفر فشار به دیتابیس میاره) ──
@@ -9,6 +9,7 @@ const voice = new Map(); // userId -> { channelId, micMuted, deafened }
 const radio = new Map(); // channelId -> { stationId, startedBy, startedAt }
 const radioTimers = new Map(); // channelId -> Timeout
 const flood = new Map(); // socketId -> { count, resetAt }
+const pingAt = new Map(); // userId -> ts (ضد اسپم پینگ «بیاید تو ویس»)
 
 const RADIO_IDLE_MS = 60 * 1000; // رادیو بعد از ۱ دقیقه خلوتی ویس قطع می‌شود
 
@@ -47,7 +48,7 @@ export function initRealtime(httpServer) {
       if (typeof channelId === 'string') socket.leave(`text:${channelId}`);
     });
 
-    socket.on('message:send', async ({ channelId, content } = {}, ack) => {
+    socket.on('message:send', async ({ channelId, content, replyToId } = {}, ack) => {
       try {
         if (typeof channelId !== 'string' || typeof content !== 'string') throw new Error('bad');
         const text = content.trim().slice(0, 4000);
@@ -57,16 +58,88 @@ export function initRealtime(httpServer) {
         const channel = await prisma.channel.findUnique({ where: { id: channelId }, select: { type: true } });
         if (!channel || channel.type !== 'TEXT') throw new Error('bad');
 
+        // اعتبارسنجی ریپلای — باید تو همین کانال باشه
+        let validReplyTo = null;
+        if (typeof replyToId === 'string' && replyToId) {
+          const parent = await prisma.message.findUnique({
+            where: { id: replyToId },
+            select: { channelId: true }
+          });
+          if (parent && parent.channelId === channelId) validReplyTo = replyToId;
+        }
+
         const message = await prisma.message.create({
-          data: { channelId, userId, content: text },
-          include: { user: { select: userPublic } }
+          data: { channelId, userId, content: text, replyToId: validReplyTo },
+          include: {
+            user: { select: userPublic },
+            replyTo: { include: { user: { select: userPublic } } },
+            reactions: { select: { emoji: true, userId: true } }
+          }
         });
-        io.to(`text:${channelId}`).emit('message:new', {
-          message: { id: message.id, channelId, content: message.content, createdAt: message.createdAt, user: pubUser(message.user) }
-        });
+        io.to(`text:${channelId}`).emit('message:new', { message: serializeMessage(message) });
         ack?.({ ok: true });
       } catch {
         ack?.({ ok: false, error: 'پیام ارسال نشد' });
+      }
+    });
+
+    socket.on('message:edit', async ({ messageId, content } = {}) => {
+      try {
+        if (typeof messageId !== 'string' || typeof content !== 'string') return;
+        const text = content.trim().slice(0, 4000);
+        if (!text || !allowFlood(socket.id)) return;
+        const m = await prisma.message.findUnique({ where: { id: messageId }, select: { userId: true, channelId: true } });
+        if (!m || m.userId !== userId) return;
+        const editedAt = new Date();
+        await prisma.message.update({ where: { id: messageId }, data: { content: text, editedAt } });
+        io.to(`text:${m.channelId}`).emit('message:edited', {
+          channelId: m.channelId,
+          messageId,
+          content: text,
+          editedAt: editedAt.toISOString()
+        });
+      } catch {
+        /* بی‌خیال */
+      }
+    });
+
+    socket.on('message:react', async ({ messageId, emoji, add } = {}) => {
+      try {
+        if (typeof messageId !== 'string' || typeof emoji !== 'string') return;
+        const em = emoji.trim();
+        if (!em || em.length > 16 || !allowFlood(socket.id)) return;
+        const m = await prisma.message.findUnique({ where: { id: messageId }, select: { channelId: true } });
+        if (!m) return;
+        try {
+          if (add) await prisma.messageReaction.create({ data: { messageId, userId, emoji: em } });
+          else await prisma.messageReaction.deleteMany({ where: { messageId, userId, emoji: em } });
+        } catch {
+          /* تکراری — بی‌خیال */
+        }
+        const rows = await prisma.messageReaction.findMany({ where: { messageId }, select: { emoji: true, userId: true } });
+        io.to(`text:${m.channelId}`).emit('message:reactions', {
+          channelId: m.channelId,
+          messageId,
+          reactions: groupReactions(rows)
+        });
+      } catch {
+        /* بی‌خیال */
+      }
+    });
+
+    // 📣 پینگ «بیاید تو ویس» — به همه جز خود فرستنده
+    socket.on('voice:ping', async ({ channelId } = {}, ack) => {
+      try {
+        const v = voice.get(userId);
+        if (!v || v.channelId !== channelId) return ack?.({ ok: false, error: 'اول خودت بیا تو ویس 🎧' });
+        const now = Date.now();
+        if (now - (pingAt.get(userId) || 0) < 30_000) return ack?.({ ok: false, error: 'یه کم صبر کن، تازه پینگ کردی 😅' });
+        pingAt.set(userId, now);
+        const me = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } });
+        socket.broadcast.emit('voice:ping', { channelId, from: { id: userId, displayName: me?.displayName || 'یکی' } });
+        ack?.({ ok: true });
+      } catch {
+        ack?.({ ok: false, error: 'پینگ ارسال نشد' });
       }
     });
 
