@@ -9,6 +9,7 @@ class VoiceClient {
     this.room = null;
     this.channelId = null;
     this.leaving = false;
+    this._lastVolumes = {}; // آخرین ولوم غیر صفر هر کاربر — برای دکمه‌ی بی‌صدا
     this.audio = new Audio();
     this.audio.preload = 'none';
   }
@@ -289,8 +290,16 @@ class VoiceClient {
 
   // ولوم هر کاربر (مثل دیسکورد) — بی‌صدا کردن کلی هم رعایت می‌شود
   setVolume(identity, v) {
+    if (v > 0) this._lastVolumes[identity] = v;
     getStore().setVolume(identity, v);
     this.applyVolumes();
+  }
+
+  // دکمه‌ی بی‌صدا/بازگرداندن صدای یک نفر
+  toggleVolumeMute(identity) {
+    const cur = getStore().voice.volumes[identity] ?? 1;
+    if (cur > 0) this.setVolume(identity, 0);
+    else this.setVolume(identity, this._lastVolumes[identity] || 1);
   }
 
   applyVolumes() {
@@ -356,8 +365,15 @@ class VoiceClient {
   }
 
   setRadioVolume(v) {
-    getStore().setRadioState({ volume: v });
+    const patch = { volume: v };
+    if (v > 0) patch.lastVolume = v;
+    getStore().setRadioState(patch);
     this.audio.volume = v;
+  }
+
+  toggleRadioMute() {
+    const { radio } = getStore();
+    this.setRadioVolume(radio.volume > 0 ? 0 : radio.lastVolume ?? 0.75);
   }
 
   playStation(channelId, stationId) {

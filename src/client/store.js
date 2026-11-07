@@ -36,7 +36,7 @@ export const useStore = create((set) => ({
   },
 
   // ── رادیو ──
-  radio: { channelId: null, station: null, playing: false, needsGesture: false, volume: 0.75, startedBy: null },
+  radio: { channelId: null, station: null, playing: false, needsGesture: false, volume: 0.75, lastVolume: 0.75, startedBy: null },
 
   // ── UI ──
   activeChannelId: null,

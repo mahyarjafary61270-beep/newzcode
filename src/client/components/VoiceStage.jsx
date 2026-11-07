@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MonitorUp, Radio, PhoneOff, MicOff, Square, Play, Signal, Maximize2, Minimize2 } from 'lucide-react';
 import { useStore, getStore } from '../store.js';
 import { voiceClient } from '../voice.js';
-import { Avatar, Equalizer } from './bits.jsx';
+import { Avatar, Equalizer, VolumeSlider } from './bits.jsx';
 
 export default function VoiceStage({ channel }) {
   const voice = useStore((s) => s.voice);
@@ -92,25 +92,42 @@ export default function VoiceStage({ channel }) {
 // ── کاشی هر نفر ──
 function ParticipantTile({ p }) {
   const [volOpen, setVolOpen] = useState(false);
+  const tileRef = useRef(null);
   const vol = useStore((s) => s.voice.volumes)[p.identity] ?? 1;
+
+  // بستن پاپ‌اور با کلیک بیرون از کاشی
+  useEffect(() => {
+    if (!volOpen) return undefined;
+    const close = (e) => {
+      if (e.target.closest?.('.tile') !== tileRef.current) setVolOpen(false);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [volOpen]);
 
   return (
     <div
+      ref={tileRef}
       className={`tile ${p.speaking ? 'speaking' : ''} ${p.isMe ? 'me' : ''}`}
       onClick={() => !p.isMe && setVolOpen((v) => !v)}
       title={p.isMe ? 'این تویی!' : 'کلیک: تنظیم بلندی صدا'}
     >
       {volOpen && !p.isMe && (
         <div className="vol-pop glass" onClick={(e) => e.stopPropagation()}>
-          <div className="vol-head">صدای {p.name}</div>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={Math.round(vol * 100)}
-            onChange={(e) => voiceClient.setVolume(p.identity, Number(e.target.value) / 100)}
+          <div className="vol-pop-head">
+            <Avatar color={p.color} name={p.name} size={30} />
+            <div className="vol-pop-id">
+              <b>{p.name}</b>
+              <span>بلندی صدای این نفر</span>
+            </div>
+          </div>
+          <VolumeSlider
+            value={vol}
+            onChange={(v) => voiceClient.setVolume(p.identity, v)}
+            onMuteToggle={() => voiceClient.toggleVolumeMute(p.identity)}
+            color={p.color}
+            label={`صدای ${p.name}`}
           />
-          <span className="vol-num">{Math.round(vol * 100)}٪</span>
         </div>
       )}
       <div className="avatar-wrap">
@@ -222,21 +239,19 @@ function RadioCard({ channelId, station, startedBy }) {
   const who = users.find((u) => u.id === startedBy);
 
   return (
-    <div className="radio-card glass" style={{ '--st': station.color }}>
+    <div className={`radio-card glass ${radio.playing ? 'playing' : ''}`} style={{ '--st': station.color }}>
       <div className="radio-visual">
         {radio.playing ? <Equalizer color={station.color} bars={6} height={26} /> : <span className="radio-emoji">{station.emoji}</span>}
       </div>
       <div className="radio-info">
         <div className="radio-name">📻 رادیو {station.name}</div>
         <div className="radio-sub dim">روشن‌کننده: {who?.displayName || '—'}</div>
-        <input
-          className="radio-vol"
-          type="range"
-          min="0"
-          max="100"
-          value={Math.round(radio.volume * 100)}
-          title={`بلندی رادیو: ${Math.round(radio.volume * 100)}٪`}
-          onChange={(e) => voiceClient.setRadioVolume(Number(e.target.value) / 100)}
+        <VolumeSlider
+          value={radio.volume}
+          onChange={(v) => voiceClient.setRadioVolume(v)}
+          onMuteToggle={() => voiceClient.toggleRadioMute()}
+          color={station.color}
+          label="بلندی رادیو"
         />
       </div>
       {radio.needsGesture && (

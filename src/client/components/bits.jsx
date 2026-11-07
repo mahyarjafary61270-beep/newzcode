@@ -1,5 +1,33 @@
 import React from 'react';
+import { Volume1, Volume2, VolumeX } from 'lucide-react';
 import { useStore } from '../store.js';
+
+const faNum = (n) => Number(n).toLocaleString('fa-IR');
+
+// ── اسلایدر ولوم مشترک (صدای هر نفر + رادیو) ──
+export function VolumeSlider({ value, onChange, onMuteToggle, color = '#8b5cf6', label }) {
+  const pct = Math.min(100, Math.max(0, Math.round(value * 100)));
+  const Icon = pct === 0 ? VolumeX : pct < 50 ? Volume1 : Volume2;
+  return (
+    <div className="volslider">
+      {onMuteToggle && (
+        <button type="button" className="vs-icon" onClick={onMuteToggle} title={pct === 0 ? 'بازگرداندن صدا' : 'بی‌صدا'}>
+          <Icon size={15} />
+        </button>
+      )}
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={pct}
+        aria-label={label || 'بلندی صدا'}
+        style={{ '--vs-fill': `${pct}%`, '--vs-color': color }}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+      />
+      <span className="vs-pct">{faNum(pct)}٪</span>
+    </div>
+  );
+}
 
 // ── لوگو (حباب گپ با گرادیان) ──
 export function Logo({ size = 36 }) {
