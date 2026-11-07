@@ -1,4 +1,4 @@
-import { Room, RoomEvent, Track, ConnectionState } from 'livekit-client';
+import { Room, RoomEvent, Track, ConnectionState, AudioPresets } from 'livekit-client';
 import { api } from './api.js';
 import { getSocket } from './socket.js';
 import { getStore } from './store.js';
@@ -29,7 +29,17 @@ class VoiceClient {
     try {
       const { token, url } = await api('/voice/token', { method: 'POST', body: { channelId: channel.id } });
 
-      const room = new Room({ adaptiveStream: true, dynacast: true });
+      // بهینه‌سازی برای اینترنت ضعیف: آپلود کمتر = لگ و پرش صدای کمتر
+      const room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        publishDefaults: {
+          audioPreset: AudioPresets.speech, // ۲۴kbps به‌جای ۴۸ — نصف‌کردن آپلود میکروفون
+          dtx: true, // موقع سکوت هیچی ارسال نمی‌شه
+          red: true // ترمیم پکت‌های گم‌شده روی نت‌های ناپایدار
+        },
+        screenShareEncoding: { maxBitrate: 1_200_000, maxFramerate: 12 } // اسکرین‌شیر سبک‌تر برای بیننده‌های ضعیف
+      });
       this.room = room;
       this.channelId = channel.id;
       this.wire(room);
