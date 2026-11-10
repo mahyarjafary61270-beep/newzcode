@@ -36,17 +36,12 @@ export function initRealtime(httpServer) {
 
     if (!online.has(userId)) online.set(userId, new Set());
     online.get(userId).add(socket.id);
-    socket.join(`user:${userId}`);
     io.emit('presence:update', { online: onlineIds() });
     socket.emit('voice:snapshot', { voice: voiceSnapshot(), radio: radioSnapshot() });
 
     // ═══════════ چت ═══════════
-    socket.on('channel:join', ({ channelId } = {}) => {
-      if (typeof channelId === 'string' && channelId.length < 64) socket.join(`text:${channelId}`);
-    });
-    socket.on('channel:leave', ({ channelId } = {}) => {
-      if (typeof channelId === 'string') socket.leave(`text:${channelId}`);
-    });
+    // چت گروهی کوچیکه، پس همه‌ی رویدادهای پیام به همه می‌ره تا بج «نخونده»
+    // و نوتیف برای کانال‌های غیرفعال هم کار کنه (سرور room نگه نمی‌داره).
 
     socket.on('message:send', async ({ channelId, content, replyToId } = {}, ack) => {
       try {
@@ -76,7 +71,7 @@ export function initRealtime(httpServer) {
             reactions: { select: { emoji: true, userId: true } }
           }
         });
-        io.to(`text:${channelId}`).emit('message:new', { message: serializeMessage(message) });
+        io.emit('message:new', { message: serializeMessage(message) });
         ack?.({ ok: true });
       } catch {
         ack?.({ ok: false, error: 'پیام ارسال نشد' });
@@ -92,7 +87,7 @@ export function initRealtime(httpServer) {
         if (!m || m.userId !== userId) return;
         const editedAt = new Date();
         await prisma.message.update({ where: { id: messageId }, data: { content: text, editedAt } });
-        io.to(`text:${m.channelId}`).emit('message:edited', {
+        io.emit('message:edited', {
           channelId: m.channelId,
           messageId,
           content: text,
@@ -117,7 +112,7 @@ export function initRealtime(httpServer) {
           /* تکراری — بی‌خیال */
         }
         const rows = await prisma.messageReaction.findMany({ where: { messageId }, select: { emoji: true, userId: true } });
-        io.to(`text:${m.channelId}`).emit('message:reactions', {
+        io.emit('message:reactions', {
           channelId: m.channelId,
           messageId,
           reactions: groupReactions(rows)
@@ -149,7 +144,7 @@ export function initRealtime(httpServer) {
         const m = await prisma.message.findUnique({ where: { id: messageId }, select: { userId: true, channelId: true } });
         if (!m || m.userId !== userId) return;
         await prisma.message.delete({ where: { id: messageId } });
-        io.to(`text:${m.channelId}`).emit('message:deleted', { channelId: m.channelId, messageId });
+        io.emit('message:deleted', { channelId: m.channelId, messageId });
       } catch {
         /* بی‌خیال */
       }
@@ -157,14 +152,29 @@ export function initRealtime(httpServer) {
 
     socket.on('typing', ({ channelId, isTyping } = {}) => {
       if (typeof channelId !== 'string') return;
-      socket.to(`text:${channelId}`).emit('typing:update', { channelId, userId, isTyping: !!isTyping });
+      socket.broadcast.emit('typing:update', { channelId, userId, isTyping: !!isTyping });
     });
 
     // ═══════════ ویس ═══════════
-    socket.on('voice:join', ({ channelId, micMuted, deafened } = {}) => {
+    socket.on('voice:join', async ({ channelId, micMuted, deafened } = {}) => {
       if (typeof channelId !== 'string') return;
+      // فقط کانال ویس واقعی قبول می‌شه — کلاینت نمی‌تونه وضعیت الکی بسازه
+      const ch = await prisma.channel
+        .findUnique({ where: { id: channelId }, select: { type: true } })
+        .catch(() => null);
+      // اگه موقع اعتبارسنجی سوکت قطع شده باشه، وضعیت ویس نساز (کاربر روحی)
+      if (!ch || ch.type !== 'VOICE' || !socket.connected) return;
+
+      const prev = voice.get(userId);
       voice.set(userId, { channelId, micMuted: !!micMuted, deafened: !!deafened });
       cancelRadioIdle(channelId);
+
+      // اگه با عوض کردن کانال، ویس قبلی خالی شد، تایمر قطع رادیوش رو ست کن
+      if (prev && prev.channelId !== channelId) {
+        const stillOccupied = [...voice.values()].some((v) => v.channelId === prev.channelId);
+        if (!stillOccupied) scheduleRadioIdle(prev.channelId);
+      }
+
       io.emit('voice:update', { voice: voiceSnapshot() });
     });
 
@@ -198,6 +208,7 @@ export function initRealtime(httpServer) {
     });
 
     socket.on('disconnect', () => {
+      flood.delete(socket.id);
       const set = online.get(userId);
       if (set) {
         set.delete(socket.id);
@@ -206,6 +217,8 @@ export function initRealtime(httpServer) {
       if (!online.has(userId)) {
         leaveVoice(userId);
         io.emit('presence:update', { online: onlineIds() });
+        // آخرین بازدید برای نمایش «آخرین آنلاین» ذخیره بشه
+        prisma.user.update({ where: { id: userId }, data: { lastSeen: new Date() } }).catch(() => {});
       }
     });
   });

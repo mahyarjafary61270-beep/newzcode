@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Hash, Volume2, Mic, MicOff, Headphones, VolumeX, PhoneOff, Plus } from 'lucide-react';
+import { Hash, Volume2, Mic, MicOff, Headphones, VolumeX, PhoneOff, Plus, LogOut } from 'lucide-react';
 import { useStore, getStore } from '../store.js';
 import { api } from '../api.js';
+import { disconnectSocket } from '../socket.js';
 import { voiceClient } from '../voice.js';
 import { Avatar, Logo } from './bits.jsx';
 
@@ -25,6 +26,13 @@ export default function Sidebar() {
     getStore().setSidebarOpen(false);
   };
 
+  const logout = () => {
+    if (!window.confirm('از حسابت خارج میشی؟')) return;
+    voiceClient.leave().catch(() => {});
+    disconnectSocket();
+    getStore().logout();
+  };
+
   return (
     <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
       <div className="brand">
@@ -33,6 +41,9 @@ export default function Sidebar() {
           <h1>مهیار گپ</h1>
           <span className="dim">gap for the boys</span>
         </div>
+        <button className="icon-btn brand-out" title="خروج از حساب" onClick={logout}>
+          <LogOut size={16} />
+        </button>
       </div>
 
       <div className="channels">

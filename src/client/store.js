@@ -3,6 +3,28 @@ import { setToken, getToken } from './api.js';
 
 let toastSeq = 0;
 
+// حالت اولیه‌ی ویس/رادیو — برای ریست کامل موقع خروج از حساب
+const freshVoice = () => ({
+  status: 'off', // off | connecting | connected
+  channelId: null,
+  micMuted: false,
+  deafened: false,
+  joinMuted: false,
+  participants: [],
+  screens: [], // [{ identity, track }]
+  volumes: {} // identity -> 0..1
+});
+
+const freshRadio = () => ({
+  channelId: null,
+  station: null,
+  playing: false,
+  needsGesture: false,
+  volume: 0.75,
+  lastVolume: 0.75,
+  startedBy: null
+});
+
 // ── استور مرکزی اپ ──
 export const useStore = create((set) => ({
   // ── احراز هویت ──
@@ -16,6 +38,7 @@ export const useStore = create((set) => ({
   online: [],
   messages: {}, // channelId -> message[]
   hasMore: {}, // channelId -> bool
+  loadedChannels: {}, // channelId -> true (تاریخچه یک‌بار از سرور گرفته شده)
   unread: {}, // channelId -> count
   typing: {}, // channelId -> { userId: expiryTs }
   voiceList: [], // [{ userId, channelId, micMuted, deafened }]
@@ -24,19 +47,10 @@ export const useStore = create((set) => ({
   livekitUrl: '',
 
   // ── ویس ──
-  voice: {
-    status: 'off', // off | connecting | connected
-    channelId: null,
-    micMuted: false,
-    deafened: false,
-    joinMuted: false,
-    participants: [],
-    screens: [], // [{ identity, track }]
-    volumes: {} // identity -> 0..1
-  },
+  voice: freshVoice(),
 
   // ── رادیو ──
-  radio: { channelId: null, station: null, playing: false, needsGesture: false, volume: 0.75, lastVolume: 0.75, startedBy: null },
+  radio: freshRadio(),
 
   // ── UI ──
   activeChannelId: null,
@@ -51,7 +65,29 @@ export const useStore = create((set) => ({
   },
   logout: () => {
     setToken(null);
-    set({ token: null, me: null, loaded: false });
+    set({
+      token: null,
+      me: null,
+      loaded: false,
+      users: [],
+      channels: [],
+      online: [],
+      messages: {},
+      hasMore: {},
+      loadedChannels: {},
+      unread: {},
+      typing: {},
+      voiceList: [],
+      radioMap: {},
+      stations: [],
+      livekitUrl: '',
+      voice: freshVoice(),
+      radio: freshRadio(),
+      activeChannelId: null,
+      pickerOpen: false,
+      sidebarOpen: false,
+      toasts: []
+    });
   },
 
   setBootstrap: (d) =>
@@ -67,12 +103,27 @@ export const useStore = create((set) => ({
       loaded: true
     }),
 
-  setActiveChannel: (id) => set({ activeChannelId: id, pickerOpen: false }),
+  setActiveChannel: (id) =>
+    set((s) => ({
+      activeChannelId: id,
+      pickerOpen: false,
+      unread: s.unread[id] ? { ...s.unread, [id]: 0 } : s.unread
+    })),
 
   addChannel: (channel) => set((s) => ({ channels: [...s.channels, channel] })),
 
+  // ادغام تاریخچه‌ی سرور با پیام‌هایی که در همین حین زنده رسیدن (بدون گم‌شدن و بدون تکراری)
   setMessages: (channelId, messages, hasMore) =>
-    set((s) => ({ messages: { ...s.messages, [channelId]: messages }, hasMore: { ...s.hasMore, [channelId]: hasMore } })),
+    set((s) => {
+      const byId = new Map((s.messages[channelId] || []).map((m) => [m.id, m]));
+      for (const m of messages) byId.set(m.id, m);
+      const merged = [...byId.values()].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      return {
+        messages: { ...s.messages, [channelId]: merged },
+        hasMore: { ...s.hasMore, [channelId]: hasMore },
+        loadedChannels: { ...s.loadedChannels, [channelId]: true }
+      };
+    }),
 
   prependMessages: (channelId, older, hasMore) =>
     set((s) => {

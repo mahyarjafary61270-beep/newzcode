@@ -55,6 +55,7 @@ const scrollToMessage = (id) => {
 export default function Chat({ channel }) {
   const messages = useStore((s) => s.messages[channel.id]);
   const hasMore = useStore((s) => s.hasMore[channel.id]);
+  const loaded = useStore((s) => s.loadedChannels[channel.id]);
   const typingMap = useStore((s) => s.typing[channel.id]);
   const me = useStore((s) => s.me);
   const users = useStore((s) => s.users);
@@ -70,17 +71,37 @@ export default function Chat({ channel }) {
   const typingAt = useRef(0);
   const inputRef = useRef(null);
 
-  // عضویت اتاق سوکت + لود پیام‌ها
+  // تاریخچه‌ی کانال — پیام‌های زنده برای همه‌ی کانال‌ها میان، پس تاریخچه
+  // باید جدا و فقط یک‌بار گرفته بشه (نه به شرط وجود پیام تو استور)
   useEffect(() => {
-    if (!channel) return undefined;
-    getSocket()?.emit('channel:join', { channelId: channel.id });
-    if (!useStore.getState().messages[channel.id]) {
-      api(`/channels/${channel.id}/messages`)
-        .then((d) => getStore().setMessages(channel.id, d.messages, d.hasMore))
-        .catch(() => {});
-    }
-    return () => getSocket()?.emit('channel:leave', { channelId: channel.id });
-  }, [channel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!channel || loaded) return undefined;
+    let alive = true;
+    api(`/channels/${channel.id}/messages`)
+      .then((d) => {
+        if (alive) getStore().setMessages(channel.id, d.messages, d.hasMore);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [channel?.id, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // با عوض شدن کانال، پیش‌نویس/ریپلای/ویرایشِ کانال قبلی به این کانال نره
+  useEffect(() => {
+    setText('');
+    setReplyTo(null);
+    setEditing(null);
+    setReactFor(null);
+    stickBottom.current = true;
+  }, [channel?.id]);
+
+  // تکست‌اریا با متن بلند قد بکشه (سقف: max-height در CSS)
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  }, [text]);
 
   // اتو اسکرول وقتی پایینیم
   useEffect(() => {
@@ -216,7 +237,8 @@ export default function Chat({ channel }) {
     if (!prev || new Date(prev.createdAt).toDateString() !== d.toDateString()) {
       rows.push({ type: 'divider', key: `d-${d.toDateString()}`, label: dayLabel(d) });
     }
-    const grouped = prev && prev.user.id === m.user.id && d - new Date(prev.createdAt) < 5 * 60 * 1000;
+    const sameDay = prev && new Date(prev.createdAt).toDateString() === d.toDateString();
+    const grouped = sameDay && prev.user.id === m.user.id && d - new Date(prev.createdAt) < 5 * 60 * 1000;
     rows.push({ type: 'message', key: m.id, m, grouped });
     prev = m;
   }
@@ -302,7 +324,8 @@ export default function Chat({ channel }) {
             value={text}
             onChange={onInput}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              // isComposing = وسط تایپ با IME؛ اون Enter رو نباید بفرستیم
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
                 e.preventDefault();
                 send();
               }
@@ -353,7 +376,7 @@ function MessageRow({ m, grouped, mine, meId, onReply, onEdit, onDelete, onToggl
               value={editing.content}
               onChange={(e) => setEditing({ id: m.id, content: e.target.value })}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
                   e.preventDefault();
                   saveEdit();
                 }

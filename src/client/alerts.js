@@ -118,7 +118,11 @@ export function stopFlash() {
   }
 }
 
+let alertsInited = false;
+
 export function initAlerts() {
+  if (alertsInited) return; // با هر لاگین/لاگ‌اوت شنونده‌ی تکراری اضافه نشه
+  alertsInited = true;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') stopFlash();
   });

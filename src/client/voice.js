@@ -61,6 +61,7 @@ class VoiceClient {
           await room.localParticipant.setMicrophoneEnabled(true);
         } catch {
           s.setVoiceState({ micMuted: true });
+          getSocket()?.emit('voice:update', { micMuted: true });
           s.toast('به میکروفون دسترسی نداریم — بی‌صدا وصل شدی 🎙️');
         }
       }

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { ArrowRight } from 'lucide-react';
 import { api } from '../api.js';
 import { useStore, getStore } from '../store.js';
 import { Logo } from './bits.jsx';
 
-export default function Login() {
+export default function Login({ onBack }) {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ username: '', password: '', displayName: '', inviteCode: '' });
   const [busy, setBusy] = useState(false);
@@ -27,6 +28,12 @@ export default function Login() {
 
   return (
     <div className="auth">
+      {onBack && (
+        <button type="button" className="auth-back" onClick={onBack}>
+          <ArrowRight size={14} />
+          صفحه‌ی اصلی
+        </button>
+      )}
       <div className="blob blob-a" />
       <div className="blob blob-b" />
       <div className="blob blob-c" />

@@ -75,7 +75,8 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
     console.log('[mahyar-gap] خاموش می‌شود…');
     server.close();
-    await prisma.$disconnect();
+    // اگه دیتابیس در دسترس نبود، خاموشی نباید با خطای دیگه‌ای گیر کنه
+    await prisma.$disconnect().catch(() => {});
     process.exit(0);
   });
 }

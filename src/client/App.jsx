@@ -1,35 +1,47 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore, getStore } from './store.js';
 import { api } from './api.js';
 import { connectSocket, getSocket, disconnectSocket } from './socket.js';
 import { voiceClient } from './voice.js';
 import { playSound, notify, flashTitle, diffVoice, initAlerts, channelName } from './alerts.js';
 import Login from './components/Login.jsx';
+import Landing from './components/Landing.jsx';
 import Shell from './components/Shell.jsx';
 
 export default function App() {
   const token = useStore((s) => s.token);
+  const [showAuth, setShowAuth] = useState(false);
 
   // ── سوکت + همه‌ی رویدادهای زنده ──
   useEffect(() => {
     if (!token) return undefined;
     initAlerts();
+    let first = true;
     const socket = connectSocket(token);
 
     socket.on('connect', async () => {
-      try {
-        const d = await api('/bootstrap');
-        getStore().setBootstrap(d);
-        // بعد از ریکانکت، وضعیت ویس و چت رو دوباره اعلام کن
-        if (voiceClient.room) {
-          const v = getStore().voice;
-          getSocket()?.emit('voice:join', { channelId: voiceClient.channelId, micMuted: v.micMuted, deafened: v.deafened });
+      // بار اول، بوت‌استرپ توسط Shell گرفته می‌شه؛ اینجا فقط بار اولی که
+      // هنوز لود نشده یا بعد از ریکانکت، وضعیت رو تازه می‌کنیم
+      const isFirst = first;
+      first = false;
+      if (!isFirst || !getStore().loaded) {
+        try {
+          const d = await api('/bootstrap');
+          getStore().setBootstrap(d);
+        } catch {
+          /* bootstrap خطا رو خود api مدیریت می‌کنه */
         }
-        const active = getStore().activeChannelId;
-        if (active) getSocket()?.emit('channel:join', { channelId: active });
-      } catch {
-        /* bootstrap خطا رو خود api مدیریت می‌کنه */
       }
+      // بعد از ریکانکت، وضعیت ویس رو دوباره اعلام کن
+      if (voiceClient.room) {
+        const v = getStore().voice;
+        getSocket()?.emit('voice:join', { channelId: voiceClient.channelId, micMuted: v.micMuted, deafened: v.deafened });
+      }
+    });
+
+    socket.on('connect_error', (err) => {
+      // 401 رو api() خودش مدیریت می‌کنه؛ بقیه فقط برای دیباگ لاگ می‌شن
+      if (!String(err?.message || '').includes('unauthorized')) console.warn('[socket]', err?.message);
     });
 
     socket.on('presence:update', ({ online }) => getStore().setOnline(online));
@@ -38,7 +50,7 @@ export default function App() {
       const s = getStore();
       const wasInactive = s.activeChannelId !== message.channelId;
       s.addMessage(message);
-      s.bumpUnread(message.channelId);
+      if (message.user.id !== s.me?.id) s.bumpUnread(message.channelId);
 
       // 🔔 صدا و اعلان — فقط پیام بقیه
       if (message.user.id !== s.me?.id && (wasInactive || document.visibilityState === 'hidden')) {
@@ -116,6 +128,8 @@ export default function App() {
     voiceClient.syncRadio();
   }, [radioMap, voiceStatus, voiceChannelId, deafened, voiceList]);
 
-  if (!token) return <Login />;
+  if (!token) {
+    return showAuth ? <Login onBack={() => setShowAuth(false)} /> : <Landing onEnter={() => setShowAuth(true)} />;
+  }
   return <Shell />;
 }
